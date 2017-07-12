@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+	<script src="http://d3js.org/d3.v4.min.js" charset="utf-8"></script>
+	<script
+		src="https://code.jquery.com/jquery-3.2.1.min.js"
+		integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4="
+		crossorigin="anonymous">
+	</script>
+	<style>
+		div.absolute {
+		    position: absolute;
+		    top: 430px;
+		   	left: 680px;
+		    width: 700px;
+		    height: 250px;
+		    z-index: 10;
+		}
+		.svg {
+
+		    z-index: 0;
+		}
+	</style>
+</head>
+<body>
+	<div id="svg" class="svg"></div>
+	<div id="resultsSpace" class="absolute">
+		 <button onclick="collectData()">Calculate!</button>
+		 <div id="printSpace"></div> 
+	</div>
+</body>
+
+<script type="text/javascript" src="{{ url_for('static', filename='interpret.js') }}"></script>
+<script type="text/javascript" src="{{ url_for('static', filename='API_requests.js') }}"></script>
+<script>
+
+
+// Returns an array of 7 points -> first and last are the same
+function createHexagonPoints(size, Xcenter, Ycenter){
+	var hexagonPoints = [];
+
+	hexagonPoints.push([Xcenter +  size * Math.cos(0), Ycenter +  size *  Math.sin(0)])
+
+	for (var i = 1; i <= 6; i++) {
+    	hexagonPoints.push([Xcenter + size * Math.cos(i * 2 * Math.PI / 6), Ycenter + size * Math.sin(i * 2 * Math.PI / 6)]) 
+	}
+
+	// rotate everything by 30°
+
+	for(var j=0; j<7; j++){
+		var g = hexagonPoints[j][0];
+		var h = hexagonPoints[j][1];
+		var o = Xcenter
+		var p = Ycenter
+
+		hexagonPoints[j][0] = parseInt(0.5*(Math.sqrt(3)*(o-g)+(p-h)) + o);
+		hexagonPoints[j][1] = parseInt(0.5*(Math.sqrt(3)*(p-h)-(o-g)) + p)
+		
+	}	
+
+	return hexagonPoints;
+}
+
+// Create data for polygon drawing
+function createFieldHexagonData(size, startCenterX, startCenterY){
+	var hexagonData = [];
+
+	var horizDist = Math.sqrt(2*Math.pow(size,2)-2*Math.pow(size,2)*(-0.5))     //103.92
+	var vertDist = size + Math.sqrt(Math.pow(size,2)-Math.pow(horizDist/2,2))
+
+	var id = 0;
+
+	// Row 1
+	startingCenter = [startCenterX, startCenterY]
+	for(var i=0; i<3; i++){		
+		appendData();
+	}
+	
+	// Row 2
+	startingCenter = [startCenterX-horizDist/2, startCenterY+vertDist]
+	for(var i=0; i<4; i++){
+		appendData();
+	}
+
+	// Row 3
+	startingCenter = [startCenterX-horizDist, startCenterY+2*vertDist]
+	for(var i=0; i<5; i++){
+		appendData();
+	}
+
+	// Row 4
+	startingCenter = [startCenterX-horizDist/2, startCenterY+3*vertDist]
+	for(var i=0; i<4; i++){
+		appendData();
+	}
+
+	// Row 5
+	startingCenter = [startCenterX, startCenterY+4*vertDist]
+	for(var i=0; i<3; i++){
+		appendData();
+	}
+
+	function appendData(){
+		var points = createHexagonPoints(size, startingCenter[0] + i * horizDist, startingCenter[1])
+		var center = [startingCenter[0] + i * horizDist, startingCenter[1]]
+		var innerCircleRadius = Math.sqrt(Math.pow(center[0]-(points[0][0]+points[1][0])/2,2)+Math.pow(center[1]-(points[0][1]+points[1][1])/2,2))
+		hexagonData.push({
+			id: id,
+			innerCircleRadius: innerCircleRadius,
+			center: center,
+			points: points
+		})
+
+		id++;
+	}
+
+	return hexagonData;
+}
+
+function createTerrainHexagonData(size, startCenterX, startCenterY){
+	var hexagonData = [];
+
+	var horizDist = Math.sqrt(2*Math.pow(size,2)-2*Math.pow(size,2)*(-0.5))
+	horizDist -= 0.4*horizDist
+	var vertDist = size + Math.sqrt(Math.pow(size,2)-Math.pow(horizDist/2,2))
+	vertDist -= 0.4*vertDist
+
+	var id = 0;
+
+	startingCenter = [startCenterX, startCenterY]
+	for(var i=0; i<8; i++){
+		if(i<4)
+			appendData("wood");
+		else
+			appendData("wheat")
+	}
+
+	startingCenter = [startCenterX, startCenterY+vertDist]
+	for(var i=0; i<8; i++){
+		if(i<4)
+			appendData("sheep");
+		else if(i<7)
+			appendData("brick")
+		else
+			appendData("desert")
+		
+	}
+
+	startingCenter = [startCenterX, startCenterY+2*vertDist]
+	for(var i=0; i<3; i++){
+		appendData("ore");
+	}
+
+	function appendData(terrain){
+		var points = createHexagonPoints(size, startingCenter[0] + i * horizDist, startingCenter[1])
+		var center = [startingCenter[0] + i * horizDist, startingCenter[1]]
+		hexagonData.push({
+			id: id,
+			terrain: terrain,
+			center: center,
+			points: points
+			
+		})
+
+		id++;
+	}
+
+	return hexagonData;
+}
+
+function createNumberChitData(radius, startCenterX, startCenterY){
+	var chitData = []
+
+	startingCenter = [startCenterX, startCenterY]
+	
+	id=0;
+
+	for(var j=0; j<9; j++){
+		for(var i=0; i<2; i++){
+			if(j==0 && i==0){
+				appendData(2);
+			}
+			else if(j==0 && i==1){
+				appendData(12)
+			}else if(j<5){
+				appendData(j+2)
+			}else{
+				appendData(j+3)
+			}
+		}
+	}
+
+	function appendData(num){
+		id++;
+
+		chitData.push({
+			id: 'numchit'+id,
+			numText: num,
+			radius: radius,
+			center: [startingCenter[0] + i*1.6*radius, startingCenter[1] + j*1.6*radius],
+		})
+	}
+
+	return chitData
+}
+
+function createPortData(){
+	var portData = []
+	hexP1 = 1
+	hexP2 = 2
+
+	// 3/1
+	portData.push({coords:[ (hexagonData[0].points[1][0]+hexagonData[0].points[2][0])/2, (hexagonData[0].points[1][1]+hexagonData[0].points[2][1])/2 ], rotation: 150, img: "31port", id:"port0", type:"31"})
+	//2/1 sheep
+	portData.push({coords:[ (hexagonData[1].points[2][0]+hexagonData[1].points[3][0])/2, (hexagonData[1].points[2][1]+hexagonData[1].points[3][1])/2 ], rotation: -150, img: "sheepPort", id:"port1", type:"s"})
+	//2/1 ore
+	portData.push({coords:[ (hexagonData[3].points[0][0]+hexagonData[3].points[1][0])/2, (hexagonData[3].points[0][1]+hexagonData[3].points[1][1])/2 ], rotation: 90, img: "orePort", id:"port2", type:"o"})
+	//3/1
+	portData.push({coords:[ (hexagonData[6].points[2][0]+hexagonData[6].points[3][0])/2, (hexagonData[6].points[2][1]+hexagonData[6].points[3][1])/2 ], rotation: -150, img: "31port", id:"port3", type:"31"})
+	//3/1
+	portData.push({coords:[ (hexagonData[11].points[3][0]+hexagonData[11].points[4][0])/2, (hexagonData[11].points[3][1]+hexagonData[11].points[4][1])/2 ], rotation: -90, img: "31port", id:"port4", type:"31"})
+	//2/1 wheat
+	portData.push({coords:[ (hexagonData[12].points[0][0]+hexagonData[12].points[1][0])/2, (hexagonData[12].points[0][1]+hexagonData[12].points[1][1])/2 ], rotation: 90, img: "wheatPort", id:"port5", type:"w"})
+	//2/1 clay
+	portData.push({coords:[ (hexagonData[15].points[4][0]+hexagonData[15].points[5][0])/2, (hexagonData[15].points[4][1]+hexagonData[15].points[5][1])/2 ], rotation: -30, img: "brickPort", id:"port6", type:"c"})
+	//3/1
+	portData.push({coords:[ (hexagonData[16].points[5][0]+hexagonData[16].points[6][0])/2, (hexagonData[16].points[5][1]+hexagonData[16].points[6][1])/2 ], rotation: 30, img:"31port", id:"port7", type:"31"})
+	//2/1 lumber
+	portData.push({coords:[ (hexagonData[17].points[4][0]+hexagonData[17].points[5][0])/2, (hexagonData[17].points[4][1]+hexagonData[17].points[5][1])/2 ], rotation: -30, img: "woodPort", id:"port8", type:"l"})
+
+	return portData
+}
+
+function createPlayerCitiesData(size, startCenterX, startCenterY){
+	var citiesData = [];
+
+	startingPoint = [startCenterX, startCenterY]
+
+	var id=0
+	
+	for(var i=0; i<8; i++){
+		var color
+		if(i<2) color="red"
+		else if(i<4) color="blue"
+		else if(i<6) color="white"
+		else color="brown"
+
+		appendData(color)
+
+	}
+	
+	function appendData(c){
+		citiesData.push({
+			id: "city"+id,
+			color: c,
+			size:size,
+			startingPoint: [startingPoint[0] + i*size*1.4, startingPoint[1]],
+			center: [startingPoint[0]+size/2 + i*size*1.4, startingPoint[1]+size/2]
+		})
+		id++
+	}
+
+	return citiesData
+}
+
+function removeDuplicates(data){
+	var newArray = []
+	var hashTable = []
+
+	for(var i=0; i<data.length; i++){
+		for(var j=0; j<data[i].points.length; j++){
+			if(!existsInHashTable(String(data[i].points[j]))){ 
+				hashTable.push(String(data[i].points[j]))
+				newArray.push(data[i].points[j])
+			}
+		}
+	}
+
+	for(var i=0; i<newArray.length; i++){
+		for(var j=0; j<newArray.length; j++){
+			if(Math.abs(newArray[i][0]-newArray[j][0])<5 && Math.abs(newArray[i][1]-newArray[j][1])<5 && i!=j)
+				newArray.splice(newArray.indexOf(newArray[i]), 1)
+		}
+	}
+
+	var id=0
+	for(var i=0; i<newArray.length; i++){
+		newArray[i] = {
+			id: "pos"+id,
+			center: newArray[i]
+		}
+		id++
+	}
+
+	return newArray
+
+	function existsInHashTable(arg){
+		for(var i=0; i<hashTable.length; i++){
+			if(arg == hashTable[i]) 
+				return true;
+
+			
+		}
+		return false;
+	}
+}
+
+
+// Init canvas
+var svg = d3.select("#svg")
+	.append("svg")
+	.attr("width","1500")
+	.attr("height","710");
+
+
+// water around playing field
+svg.append("rect")
+	.attr("x", 0)
+	.attr("y", 0)
+	.attr("width", 650)
+	.attr("height", 710)
+	.attr("fill", "lightblue")
+	.attr("stroke", "black")
+
+
+var hexagonData = createFieldHexagonData(65,190,150)
+var hexagonDataNoDups = removeDuplicates(hexagonData)
+//console.log(hexagonDataNoDups)
+
+// create ports
+var ports = svg.selectAll("circle")
+    .data(createPortData())
+  	.enter().append("circle")
+  	.attr("id", function(d){ return d.id})
+    .attr("cx", function(d) { return d.coords[0]; })
+    .attr("cy", function(d) { return d.coords[1]; })
+    .attr("r", 50)
+    .attr("data-type", "port")
+    .attr("data-portType", function(d){ return d.type})
+    .attr("fill", "lightgreen")
+    .attr("stroke", "black")
+    .attr("stroke-width", 1)
+    .attr("fill", function(d){ return "url(#"+d.img+")" })
+    .attr("transform", function(d){  return "rotate("+d.rotation+","+d.coords[0]+","+d.coords[1]+")"  })
+
+// empty hexes for tiles
+svg.selectAll("polygon")
+    .data(hexagonData)
+  	.enter().append("polygon")
+  	.attr("id", function(d){ return "field"+d.id })
+  	.attr("class", "field")
+    .attr("points", function(d) { return String(d.points) })
+    .attr("data-xCenter", function(d){ return d.center[0] })
+    .attr("data-yCenter", function(d){ return d.center[1] })
+    .attr("data-innerCircleRadius", function(d){ return d.innerCircleRadius })
+    .attr("data-type", "hex")
+    .attr("data-terrain", "")
+    .attr("data-chit", "")
+    .attr("data-chitID", "")
+    .attr("fill", "white")
+    .attr("stroke", "black")
+    .attr("stroke-width", 1)
+    //.on("mouseover", function(){ console.log(d3.select(this).attr("data-xCenter")); d3.select(this).attr("fill", "lightgreen") })//d3.select(this).attr("fill", "lightblue") })
+    //.on("mouseleave", function(){ d3.select(this).attr("fill", "white") })
+
+// create terrain tiles
+var placeableTilesData = createTerrainHexagonData(65, 730, 80)
+svg.selectAll("#placeableTiles")
+	.data(placeableTilesData)
+  	.enter().append("polygon")
+    .attr("points", function(d) { return String(d.points) })
+    .attr("data-originalPoints", function(d) { return String(d.points) })
+    .attr("data-originalXCenter", function(d) { return d.center[0] })
+    .attr("data-originalYCenter", function(d) { return d.center[1] })
+    .attr("data-terrain", function(d){ return d.terrain})
+    .attr("fill", "white")
+    .attr("stroke", "black")
+    .attr("stroke-width", 1)
+    .attr("fill", function(d){return "url(#"+d.terrain+")"})
+    .call(d3.drag()
+        .on("start", terrainHexDragStarted)
+        .on("drag", terrainHexDragged)
+        .on("end", terrainHexDragEnded));
+
+// create number chits
+numberChitData = createNumberChitData(22,1300, 40)
+svg.selectAll(".cle")
+    .data(numberChitData).enter().append("circle")
+    .attr("id", function(d){ return d.id })
+    .attr("cx", function(d){ return d.center[0] })
+    .attr("cy", function(d){ return d.center[1] })
+    .attr("r", function(d){ return d.radius })
+    .attr("data-origCX", function(d){ return d.center[0] })
+    .attr("data-origCY", function(d){ return d.center[1] })
+    .attr("fill", "lightgreen")
+    .attr("stroke", "black")
+    .attr("stroke-width", 1)
+    .attr("fill", function(d){ return "url(#chit"+d.numText+")" })
+    .call(d3.drag()
+        .on("start", chitDragStarted)
+        .on("drag", chitDragged)
+        .on("end", chitDragEnded));
+
+// rects for cities
+var playerCitiesData = createPlayerCitiesData(40, 720, 360)
+svg.selectAll("#cities")
+	.data(playerCitiesData)
+	.enter().append("rect")
+	.attr("class", "city")
+	.attr("id", function(d){return d.id})
+	.attr("x", function(d){ return d.startingPoint[0]})
+	.attr("y", function(d){ return d.startingPoint[1]})
+	.attr("width", function(d){ return d.size})
+	.attr("height", function(d){ return d.size})
+	.attr("fill", function(d){ return d.color})
+	.attr("stroke", "black")
+	
+    .call(d3.drag()
+        .on("start", cityDragStarted)
+        .on("drag", cityDragged)
+        .on("end", cityDragEnded));
+    
+
+//console.log(hexagonDataNoDups)
+// circles for placing cities
+svg.selectAll("#clecks")
+    .data(hexagonDataNoDups).enter().append("circle")
+    .attr("id", function(d){ return d.id})
+    .attr("cx", function(d){ return d.center[0] })
+    .attr("cy", function(d){ return d.center[1] })
+    .attr("r", 25)
+    .attr("data-cityID", "")
+    .attr("data-cityColor", "")
+    .attr("fill", "white")
+    .attr("data-adjacentHexes", function(d) {return findAdjacentHexes(d.center[0],d.center[1])})
+    .style("opacity", 0)
+
+
+function cityDragStarted(d) {
+	d3.select(this).raise()
+	var dis = d3.select(this)
+	
+	if(d3.select("[data-cityID="+d.id+"]")){
+		d3.select("[data-cityID="+d.id+"]").attr("data-cityID", "").attr("data-cityColor", "")
+	}
+}
+
+function cityDragged(d) {
+	d3.select(this).attr("x", d3.event.x-d.size/2).attr("y", d3.event.y-d.size/2);
+}
+
+function cityDragEnded(d) {
+	var dis = d3.select(this)
+
+	var newCenter = [d.center[0], d.center[1]]
+	var center = [parseInt(dis.attr("x"))+d.size/2, parseInt(dis.attr("y"))+d.size/2]
+	for(var i=0; i<hexagonDataNoDups.length; i++){
+
+		var distance = Math.sqrt(Math.pow(center[0]-hexagonDataNoDups[i].center[0],2)+Math.pow(center[1]-hexagonDataNoDups[i].center[1],2))
+		//console.log(distance)
+		if(distance<25){
+			//console.log("distance goody")
+			if(!d3.select("#" + hexagonDataNoDups[i].id).attr("data-cityID")){
+				newCenter = [hexagonDataNoDups[i].center[0], hexagonDataNoDups[i].center[1]];
+				d3.select("#" + hexagonDataNoDups[i].id).attr("data-cityID", d.id)
+				d3.select("#" + hexagonDataNoDups[i].id).attr("data-cityColor", d.color)
+				//console.log(d3.select("#" + hexagonDataNoDups[i].id).attr("id"))
+				//console.log("#" + hexagonDataNoDups[i].id)
+			}
+					
+		}
+	}
+
+	dis.attr("x", newCenter[0]-d.size/2)
+	dis.attr("y", newCenter[1]-d.size/2)
+}
+
+function chitDragStarted(d) {
+	d3.select(this).raise()
+	var dis = d3.select(this)
+
+	for(var i=0; i<hexagonData.length; i++){
+
+		var distance = Math.sqrt(Math.pow(dis.attr("cx")-hexagonData[i].center[0],2)+Math.pow(dis.attr("cy")-hexagonData[i].center[1],2))
+
+		if(distance<hexagonData[i].innerCircleRadius){
+			d3.select("#field"+hexagonData[i].id).attr("data-chit", "")
+			d3.select("#field"+hexagonData[i].id).attr("data-chitID", "")
+		}
+	}
+}
+
+function chitDragged(d) {
+	d3.select(this).attr("cx", d3.event.x).attr("cy", d3.event.y);
+
+}
+
+function chitDragEnded(d) {
+	var dis = d3.select(this)
+
+	var newCoord = [d.center[0], d.center[1]]
+
+	for(var i=0; i<hexagonData.length; i++){
+
+		var distance = Math.sqrt(Math.pow(dis.attr("cx")-hexagonData[i].center[0],2)+Math.pow(dis.attr("cy")-hexagonData[i].center[1],2))
+		//console.log(distance)
+		if(distance<hexagonData[i].innerCircleRadius){
+			if(d3.select("#field"+hexagonData[i].id).attr("data-terrain") && !d3.select("#field"+hexagonData[i].id).attr("data-chit")){
+				newCoord = [hexagonData[i].center[0], hexagonData[i].center[1]]
+				d3.select("#field"+hexagonData[i].id).attr("data-chit", d.numText)
+				d3.select("#field"+hexagonData[i].id).attr("data-chitID", d.id)
+			}else{
+				newCoord = [d.center[0], d.center[1]]
+			}
+		}
+	}
+
+	dis.attr("cx", newCoord[0])
+	dis.attr("cy", newCoord[1])
+
+
+}
+
+function terrainHexDragStarted(d) {
+
+	d3.select(this).raise()
+	d3.selectAll("#clecks").raise()
+	d3.selectAll(".city").raise()
+
+	for(var i=0; i<hexagonData.length; i++){
+
+		var distance = Math.sqrt(Math.pow(d.center[0]-hexagonData[i].center[0],2)+Math.pow(d.center[1]-hexagonData[i].center[1],2))
+
+		if(distance<hexagonData[i].innerCircleRadius){
+			var thisField = d3.select("#field"+hexagonData[i].id)
+
+			if(thisField.attr("data-chitID")){
+				var thisChit = d3.select("#" + (thisField.attr("data-chitID")))
+
+				thisChit.attr("cx", thisChit.attr("data-origCX"))
+				thisChit.attr("cy", thisChit.attr("data-origCY"))
+			}
+
+			thisField.attr("data-terrain", "")			
+			thisField.attr("data-chit", "")
+			thisField.attr("data-chitID", "")
+		}
+	}
+}
+
+function terrainHexDragged(d) {
+	d3.select(this).attr("points", function() {
+		for(var i=0; i<d.points.length; i++){
+			d.points[i][0] += d3.event.dx
+			d.points[i][1] += d3.event.dy
+		}
+		
+		return d.points
+	})
+
+	d3.select(this).attr("data-xCenter", function() {
+		return d.center[0] += d3.event.dx;
+	})
+	d3.select(this).attr("data-yCenter", function() {
+		return d.center[1] += d3.event.dy;
+	})
+	
+	
+	
+}
+
+function terrainHexDragEnded(d) {
+	var dis = d3.select(this)
+
+	d3.select(this).attr("points", function(){
+		for(var i=0; i<hexagonData.length; i++){
+
+			var distance = Math.sqrt(Math.pow(d.center[0]-hexagonData[i].center[0],2)+Math.pow(d.center[1]-hexagonData[i].center[1],2))
+
+			if(distance<hexagonData[i].innerCircleRadius){
+				if(d3.select("#field"+hexagonData[i].id).attr("data-terrain")){
+					d.points = stringToArray(d3.select(this).attr("data-originalPoints"), "int")
+					d.center[0] = parseInt(d3.select(this).attr("data-originalXCenter"))
+					d.center[1] = parseInt(d3.select(this).attr("data-originalYCenter"))
+					return d3.select(this).attr("data-originalPoints")
+				}else{
+					d3.select("#field"+hexagonData[i].id).attr("data-terrain", d3.select(this).attr("data-terrain"))
+					return hexagonData[i].points
+				}
+			}
+		}
+		d.points = stringToArray(d3.select(this).attr("data-originalPoints"), "int")
+		d.center[0] = parseInt(d3.select(this).attr("data-originalXCenter"))
+		d.center[1] = parseInt(d3.select(this).attr("data-originalYCenter"))
+		return d3.select(this).attr("data-originalPoints")
+	})
+}
+
+function findAdjacentHexes(x, y){
+	var idArray = []
+
+	for(var i=0; i<hexagonData.length; i++){
+		for(var j=0; j<hexagonData[i].points.length; j++){
+			if(Math.abs(x-hexagonData[i].points[j][0])<5 && Math.abs(y-hexagonData[i].points[j][1])<5){
+				idArray.push("#field"+String(hexagonData[i].id))
+				if(i==0 && (j==1 || j==2)){
+					idArray.push("#port0")
+				}
+				else if(i==1 && (j==2 || j==3)){
+					idArray.push("#port1")
+				}
+				else if(i==3 && (j==0 || j==1)){
+					idArray.push("#port2")
+				}
+				else if(i==6 && (j==2 || j==3)){
+					idArray.push("#port3")
+				}
+				else if(i==11 && (j==3 || j==4)){
+					idArray.push("#port4")
+				}
+				else if(i==12 && (j==0 || j==1)){
+					idArray.push("#port5")
+				}
+				else if(i==15 && (j==4 || j==5)){
+					idArray.push("#port6")
+				}
+				else if(i==16 && (j==0 || j==5)){
+					idArray.push("#port7")
+				}
+				else if(i==17 && (j==4 || j==5)){
+					idArray.push("#port8")
+				}
+			}
+		}
+	}
+
+	var idArray = uniq_fast(idArray)
+	return idArray
+
+	function uniq_fast(a) {
+	    var seen = {};
+	    var out = [];
+	    var len = a.length;
+	    var j = 0;
+	    for(var i = 0; i < len; i++) {
+	         var item = a[i];
+	         if(seen[item] !== 1) {
+	               seen[item] = 1;
+	               out[j++] = item;
+	         }
+	    }
+	    return out;
+	}
+}
+
+function stringToArray(string, type){
+	if(type==="int"){
+		var ar = string.split(",")
+		var array = []
+		for(var i=0; i<ar.length; i+=2){
+			array.push( [ parseInt(ar[i]),parseInt(ar[i+1]) ] )
+		}
+		return array;
+	}else if(type==="string"){
+		var ar = string.split(",")
+		return ar;
+	}
+	
+}
+
+
+
+
+</script>
+<script type="text/javascript" src="{{ url_for('static', filename='defs.js') }}"></script>
+
